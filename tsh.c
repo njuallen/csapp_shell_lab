@@ -226,7 +226,7 @@ void eval(char *cmdline)
 			Sigprocmask(SIG_UNBLOCK, &mask, NULL); /* Unblock SIGCHLD */
 			Setpgid(0, 0);
 			if (execve(argv[0], argv, environ) < 0) {
-				printf("%s: Command not found.\n", argv[0]);
+				printf("%s: Command not found\n", argv[0]);
 				exit(0);
 			}
 		}
@@ -332,21 +332,71 @@ int builtin_cmd(char **argv)
 
 void do_bgfg(char **argv) 
 {
-	int bg = strcmp(argv[0], "bg");
+	int bg = (strcmp(argv[0], "bg") == 0) ? 1 : 0;
 	int jid = 0;
-	int pid = -1;
-	if(argv[1]) {
-		printf("%s command requires PID or %%jobid argument\n", (bg == 0) ? "bg" : "fg" );
+	int pid = 0;
+
+	sigset_t mask;
+	Sigemptyset(&mask);
+	Sigaddset(&mask, SIGCHLD); 
+
+	/* there is only one argument */
+	if(!argv[1]) {
+		printf("%s command requires PID or %%jobid argument\n", bg ? "bg" : "fg" );
 		return;
 	}
+	/* jid */
 	if(argv[1][0] == '%') {
-		/* jid */
 		sscanf(&argv[1][1], "%d", &jid);
+		struct job_t *job = getjobjid(jobs, jid);	
+		if(!job) {
+			printf("%%%d: No such job\n", jid);
+			return;
+		}
+		Sigprocmask(SIG_BLOCK, &mask, NULL); /* Block SIGCHLD */
+
+		if(bg) {
+			job->state = BG;
+			printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+		}
+		else 
+			job->state = FG;
+
+		/* send signal to the whole process group */
+		Kill(-job->pid, SIGCONT);
+
+		Sigprocmask(SIG_UNBLOCK, &mask, NULL);  /* Unblock SIGCHLD */
+
+		/* foreground job */
+		if(!bg)
+			waitfg(job->pid);
 		return;
 	}
+	/* pid */
 	if(argv[1][0] >= '0' && argv[1][0] <= '9') {
-		/* pid */
 		sscanf(&argv[1][1], "%d", &pid);
+		struct job_t *job = getjobpid(jobs, pid);	
+		if(!job) {
+			printf("(%d): No such process\n", pid);
+			return;
+		}
+		Sigprocmask(SIG_BLOCK, &mask, NULL); /* Block SIGCHLD */
+
+		if(bg) {
+			job->state = BG;
+			printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+		}
+		else 
+			job->state = FG;
+
+		/* send signal to the whole process group */
+		Kill(-job->pid, SIGCONT);
+
+		Sigprocmask(SIG_UNBLOCK, &mask, NULL);  /* Unblock SIGCHLD */
+
+		/* foreground job */
+		if(!bg)
+			waitfg(job->pid);
 		return;
 	}
 	printf("%s: argument must be a PID or %%jobid\n",(bg == 0) ? "bg" : "fg" );
