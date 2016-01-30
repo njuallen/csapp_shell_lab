@@ -25,6 +25,8 @@
 #define BG 2    /* running in background */
 #define ST 3    /* stopped */
 
+//#define DEBUG
+
 /* 
  * Jobs states: FG (foreground), BG (background), ST (stopped)
  * Job state transitions and enabling actions:
@@ -71,7 +73,8 @@ void sigquit_handler(int sig);
 void clearjob(struct job_t *job);
 void initjobs(struct job_t *jobs);
 int maxjid(struct job_t *jobs); 
-int addjob(struct job_t *jobs, pid_t pid, int state, char *cmdline);
+int addjob_ok(struct job_t *jobs);
+void addjob(struct job_t *jobs, pid_t pid, int state, char *cmdline);
 int deletejob(struct job_t *jobs, pid_t pid); 
 pid_t fgpid(struct job_t *jobs);
 struct job_t *getjobpid(struct job_t *jobs, pid_t pid);
@@ -84,6 +87,28 @@ void unix_error(char *msg);
 void app_error(char *msg);
 typedef void handler_t(int);
 handler_t *Signal(int signum, handler_t *handler);
+
+/* Process control wrappers */
+pid_t Fork(void);
+void Execve(const char *filename, char *const argv[], char *const envp[]);
+pid_t Wait(int *status);
+pid_t Waitpid(pid_t pid, int *iptr, int options);
+void Kill(pid_t pid, int signum);
+unsigned int Sleep(unsigned int secs);
+void Pause(void);
+unsigned int Alarm(unsigned int seconds);
+void Setpgid(pid_t pid, pid_t pgid);
+pid_t Getpgrp();
+
+/* Signal wrappers */
+typedef void handler_t(int);
+handler_t *Signal(int signum, handler_t *handler);
+void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
+void Sigemptyset(sigset_t *set);
+void Sigfillset(sigset_t *set);
+void Sigaddset(sigset_t *set, int signum);
+void Sigdelset(sigset_t *set, int signum);
+int Sigismember(const sigset_t *set, int signum);
 
 /*
  * main - The shell's main routine 
@@ -137,13 +162,18 @@ int main(int argc, char **argv)
 			fflush(stdout);
 		}
 		if ((fgets(cmdline, MAXLINE, stdin) == NULL) && ferror(stdin))
+		{
 			app_error("fgets error");
+		}
 		if (feof(stdin)) { /* End of file (ctrl-d) */
 			fflush(stdout);
 			exit(0);
 		}
 
 		/* Evaluate the command line */
+#ifdef DEBUG
+		printf("cmdline: %s", cmdline);
+#endif
 		eval(cmdline);
 		fflush(stdout);
 		fflush(stdout);
@@ -165,6 +195,53 @@ int main(int argc, char **argv)
  */
 void eval(char *cmdline) 
 {
+	char *argv[MAXARGS]; /* Argument list execve() */
+	char buf[MAXLINE];   /* Holds modified command line */
+	int state = FG;              /* Should the job run in bg or fg?, by default, it is FG */
+	pid_t pid;           /* Process id */
+
+	strcpy(buf, cmdline);
+	/* the user has requested a BG job */
+	if (parseline(buf, argv))
+		state = BG;
+
+	if (argv[0] == NULL) {
+#ifdef DEBUG
+		printf("empty line!\n");
+#endif
+		return;   /* Ignore empty lines */
+	}
+
+	if (!builtin_cmd(argv)) { 
+		/* addjob failed! */
+		if(!addjob_ok(jobs))
+			return;
+
+		sigset_t mask;
+		Sigemptyset(&mask);
+		Sigaddset(&mask, SIGCHLD); 
+		Sigprocmask(SIG_BLOCK, &mask, NULL); /* Block SIGCHLD */
+		pid = Fork();
+		if (pid == 0) {   /* Child runs user job */
+			Sigprocmask(SIG_UNBLOCK, &mask, NULL); /* Unblock SIGCHLD */
+			Setpgid(0, 0);
+			if (execve(argv[0], argv, environ) < 0) {
+				printf("%s: Command not found.\n", argv[0]);
+				exit(0);
+			}
+		}
+		/* do all these things before unblock SIGCHLD */
+		addjob(jobs, pid, state, buf); 
+		if(state == BG){
+			struct job_t *job = getjobpid(jobs, pid);
+			printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+		}
+
+		Sigprocmask(SIG_UNBLOCK, &mask, NULL);  /* Unblock SIGCHLD */
+		/* Parent waits for foreground job to terminate */
+		if(state == FG)
+			waitfg(pid);
+	}
 	return;
 }
 
@@ -231,14 +308,48 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv) 
 {
+	if (!strcmp(argv[0], "quit")) /* quit command */
+		exit(0);  
+	if(!strcmp(argv[0], "fg") || !strcmp(argv[0], "bg")) {
+		do_bgfg(argv);
+		return 1;
+	}
+	if(!strcmp(argv[0], "jobs")) {
+#ifdef DEBUG
+		printf("jobs!\n");
+#endif
+		listjobs(jobs);
+		return 1;
+	}
+	if (!strcmp(argv[0], "&"))    /* Ignore singleton & */
+		return 1;
 	return 0;     /* not a builtin command */
 }
 
 /* 
  * do_bgfg - Execute the builtin bg and fg commands
  */
+
 void do_bgfg(char **argv) 
 {
+	int bg = strcmp(argv[0], "bg");
+	int jid = 0;
+	int pid = -1;
+	if(argv[1]) {
+		printf("%s command requires PID or %%jobid argument\n", (bg == 0) ? "bg" : "fg" );
+		return;
+	}
+	if(argv[1][0] == '%') {
+		/* jid */
+		sscanf(&argv[1][1], "%d", &jid);
+		return;
+	}
+	if(argv[1][0] >= '0' && argv[1][0] <= '9') {
+		/* pid */
+		sscanf(&argv[1][1], "%d", &pid);
+		return;
+	}
+	printf("%s: argument must be a PID or %%jobid\n",(bg == 0) ? "bg" : "fg" );
 	return;
 }
 
@@ -247,6 +358,15 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
+	struct job_t *job = NULL;
+	while((job = getjobpid(jobs, pid)) && job->state == FG)
+	{
+#ifdef DEBUG
+		printf("sleeping!\n");
+#endif
+		Sleep(1);
+	}
+
 	return;
 }
 
@@ -263,6 +383,47 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
+#ifdef DEBUG
+	printf("SIGCHLD!\n");
+#endif
+	pid_t pid;
+	int status;
+	/* we need to catch both terminated and stopped children
+	 * so we need to use the WUNTRACED option
+	 * what's more, the waitpid should not be blocked
+	 * so we use the WNOHANG option
+	 */
+	while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0)
+	{
+		struct job_t *job = getjobpid(jobs, pid);
+		if(!job) {
+			sprintf(sbuf, "process %d not in the job list\n", pid);
+			app_error(sbuf);
+		}
+		/* the child process was terminated */
+		if(WIFEXITED(status) || WIFSIGNALED(status)) {
+			/* the child process terminated because of signal that was not caught */
+			if(WIFSIGNALED(status)) {
+				printf("Job [%d] (%d) terminated by signal %d\n",
+						job->jid, job->pid, WTERMSIG(status));
+			}
+			deletejob(jobs, pid); /* Delete the child from the job list */
+		}
+		else if(WIFSTOPPED(status)) {
+			/* the child process stopped because of signal that was not caught */
+			printf("Job [%d] (%d) stopped by signal %d\n",
+					job->jid, job->pid, WSTOPSIG(status));
+			job->state = ST;
+		}
+		else
+			app_error("unknown child status");
+	}
+
+	/* if the calling process has no children, 
+	 * then waitpid returns -1 and set errno to ECHILD
+	 * so we do not need to check "errno != ECHILD"
+	 * since there may be other children running
+	 */
 	return;
 }
 
@@ -273,6 +434,14 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
+
+#ifdef DEBUG
+	printf("SIGINT!\n");
+#endif
+	int gpid = fgpid(jobs);
+	/* if there is no foreground job, ignore the signal */
+	if(gpid)
+		Kill(-gpid, sig);
 	return;
 }
 
@@ -283,6 +452,12 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
+#ifdef DEBUG
+	printf("SIGSTOP!\n");
+#endif
+	int gpid = fgpid(jobs);
+	if(gpid)
+		Kill(-gpid, sig);
 	return;
 }
 
@@ -321,13 +496,23 @@ int maxjid(struct job_t *jobs)
 	return max;
 }
 
-/* addjob - Add a job to the job list */
-int addjob(struct job_t *jobs, pid_t pid, int state, char *cmdline) 
+/* addjob_ok - if it is ok to add a job to the job list */
+int addjob_ok(struct job_t *jobs)
 {
 	int i;
+	for (i = 0; i < MAXJOBS; i++) {
+		if (jobs[i].pid == 0)
+			return 1;
+	}
+	printf("Tried to create too many jobs\n");
+	return 0;
+}
 
-	if (pid < 1)
-		return 0;
+/* addjob - Add a job to the job list */
+/* pid must be positive and you can call it only if addjob_ok returns true */
+void addjob(struct job_t *jobs, pid_t pid, int state, char *cmdline) 
+{
+	int i;
 
 	for (i = 0; i < MAXJOBS; i++) {
 		if (jobs[i].pid == 0) {
@@ -340,11 +525,11 @@ int addjob(struct job_t *jobs, pid_t pid, int state, char *cmdline)
 			if(verbose){
 				printf("Added job [%d] %d %s\n", jobs[i].jid, jobs[i].pid, jobs[i].cmdline);
 			}
-			return 1;
+			return;
 		}
 	}
-	printf("Tried to create too many jobs\n");
-	return 0;
+	app_error("failed to add a job, maybe you didn't call addjob correctly!");
+	return; 
 }
 
 /* deletejob - Delete a job whose PID=pid from the job list */
@@ -445,6 +630,7 @@ void listjobs(struct job_t *jobs)
  ******************************/
 
 
+
 /***********************
  * Other helper routines
  ***********************/
@@ -479,21 +665,6 @@ void app_error(char *msg)
 	exit(1);
 }
 
-/*
- * Signal - wrapper for the sigaction function
- */
-handler_t *Signal(int signum, handler_t *handler) 
-{
-	struct sigaction action, old_action;
-
-	action.sa_handler = handler;  
-	sigemptyset(&action.sa_mask); /* block sigs of type being handled */
-	action.sa_flags = SA_RESTART; /* restart syscalls if possible */
-
-	if (sigaction(signum, &action, &old_action) < 0)
-		unix_error("Signal error");
-	return (old_action.sa_handler);
-}
 
 /*
  * sigquit_handler - The driver program can gracefully terminate the
@@ -505,5 +676,146 @@ void sigquit_handler(int sig)
 	exit(1);
 }
 
+/*********************************************
+ * Wrappers for Unix process control functions
+ ********************************************/
 
+/* $begin forkwrapper */
+pid_t Fork(void) 
+{
+    pid_t pid;
 
+    if ((pid = fork()) < 0)
+	unix_error("Fork error");
+    return pid;
+}
+/* $end forkwrapper */
+
+void Execve(const char *filename, char *const argv[], char *const envp[]) 
+{
+    if (execve(filename, argv, envp) < 0)
+	unix_error("Execve error");
+}
+
+/* $begin wait */
+pid_t Wait(int *status) 
+{
+    pid_t pid;
+
+    if ((pid  = wait(status)) < 0)
+	unix_error("Wait error");
+    return pid;
+}
+/* $end wait */
+
+pid_t Waitpid(pid_t pid, int *iptr, int options) 
+{
+    pid_t retpid;
+
+    if ((retpid  = waitpid(pid, iptr, options)) < 0) 
+	unix_error("Waitpid error");
+    return(retpid);
+}
+
+/* $begin kill */
+void Kill(pid_t pid, int signum) 
+{
+    int rc;
+
+    if ((rc = kill(pid, signum)) < 0)
+	unix_error("Kill error");
+}
+/* $end kill */
+
+void Pause() 
+{
+    (void)pause();
+    return;
+}
+
+unsigned int Sleep(unsigned int secs) 
+{
+    unsigned int rc;
+
+    if ((rc = sleep(secs)) < 0)
+	unix_error("Sleep error");
+    return rc;
+}
+
+unsigned int Alarm(unsigned int seconds) {
+    return alarm(seconds);
+}
+ 
+void Setpgid(pid_t pid, pid_t pgid) {
+    int rc;
+
+    if ((rc = setpgid(pid, pgid)) < 0)
+	unix_error("Setpgid error");
+    return;
+}
+
+pid_t Getpgrp(void) {
+    return getpgrp();
+}
+
+/************************************
+ * Wrappers for Unix signal functions 
+ ***********************************/
+
+/* $begin sigaction */
+handler_t *Signal(int signum, handler_t *handler) 
+{
+    struct sigaction action, old_action;
+
+    action.sa_handler = handler;  
+    sigemptyset(&action.sa_mask); /* block sigs of type being handled */
+    action.sa_flags = SA_RESTART; /* restart syscalls if possible */
+
+    if (sigaction(signum, &action, &old_action) < 0)
+	unix_error("Signal error");
+    return (old_action.sa_handler);
+}
+/* $end sigaction */
+
+void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
+{
+    if (sigprocmask(how, set, oldset) < 0)
+	unix_error("Sigprocmask error");
+    return;
+}
+
+void Sigemptyset(sigset_t *set)
+{
+    if (sigemptyset(set) < 0)
+	unix_error("Sigemptyset error");
+    return;
+}
+
+void Sigfillset(sigset_t *set)
+{ 
+    if (sigfillset(set) < 0)
+	unix_error("Sigfillset error");
+    return;
+}
+
+void Sigaddset(sigset_t *set, int signum)
+{
+    if (sigaddset(set, signum) < 0)
+	unix_error("Sigaddset error");
+    return;
+}
+
+void Sigdelset(sigset_t *set, int signum)
+{
+    if (sigdelset(set, signum) < 0)
+	unix_error("Sigdelset error");
+    return;
+}
+
+int Sigismember(const sigset_t *set, int signum)
+{
+    int rc;
+    if ((rc = sigismember(set, signum)) < 0)
+	unix_error("Sigismember error");
+    return rc;
+}

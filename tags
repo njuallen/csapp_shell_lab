@@ -1,0 +1,66 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+Alarm	tsh.c	/^unsigned int Alarm(unsigned int seconds) {$/;"	f
+BG	tsh.c	25;"	d	file:
+Execve	tsh.c	/^void Execve(const char *filename, char *const argv[], char *const envp[]) $/;"	f
+FG	tsh.c	24;"	d	file:
+Fork	tsh.c	/^pid_t Fork(void) $/;"	f
+Getpgrp	tsh.c	/^pid_t Getpgrp(void) {$/;"	f
+Kill	tsh.c	/^void Kill(pid_t pid, int signum) $/;"	f
+MAXARGS	tsh.c	18;"	d	file:
+MAXJID	tsh.c	20;"	d	file:
+MAXJOBS	tsh.c	19;"	d	file:
+MAXLINE	tsh.c	17;"	d	file:
+Pause	tsh.c	/^void Pause() $/;"	f
+ST	tsh.c	26;"	d	file:
+Setpgid	tsh.c	/^void Setpgid(pid_t pid, pid_t pgid) {$/;"	f
+Sigaddset	tsh.c	/^void Sigaddset(sigset_t *set, int signum)$/;"	f
+Sigdelset	tsh.c	/^void Sigdelset(sigset_t *set, int signum)$/;"	f
+Sigemptyset	tsh.c	/^void Sigemptyset(sigset_t *set)$/;"	f
+Sigfillset	tsh.c	/^void Sigfillset(sigset_t *set)$/;"	f
+Sigismember	tsh.c	/^int Sigismember(const sigset_t *set, int signum)$/;"	f
+Signal	tsh.c	/^handler_t *Signal(int signum, handler_t *handler) $/;"	f
+Sigprocmask	tsh.c	/^void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset)$/;"	f
+Sleep	tsh.c	/^unsigned int Sleep(unsigned int secs) $/;"	f
+UNDEF	tsh.c	23;"	d	file:
+Wait	tsh.c	/^pid_t Wait(int *status) $/;"	f
+Waitpid	tsh.c	/^pid_t Waitpid(pid_t pid, int *iptr, int options) $/;"	f
+addjob	tsh.c	/^void addjob(struct job_t *jobs, pid_t pid, int state, char *cmdline) $/;"	f
+addjob_ok	tsh.c	/^int addjob_ok(struct job_t *jobs)$/;"	f
+app_error	tsh.c	/^void app_error(char *msg)$/;"	f
+builtin_cmd	tsh.c	/^int builtin_cmd(char **argv) $/;"	f
+clearjob	tsh.c	/^void clearjob(struct job_t *job) {$/;"	f
+cmdline	tsh.c	/^	char cmdline[MAXLINE];  \/* command line *\/$/;"	m	struct:job_t	file:
+deletejob	tsh.c	/^int deletejob(struct job_t *jobs, pid_t pid) $/;"	f
+do_bgfg	tsh.c	/^void do_bgfg(char **argv) $/;"	f
+eval	tsh.c	/^void eval(char *cmdline) $/;"	f
+fgpid	tsh.c	/^pid_t fgpid(struct job_t *jobs) {$/;"	f
+getjobjid	tsh.c	/^struct job_t *getjobjid(struct job_t *jobs, int jid) $/;"	f
+getjobpid	tsh.c	/^struct job_t *getjobpid(struct job_t *jobs, pid_t pid) {$/;"	f
+handler_t	tsh.c	/^typedef void handler_t(int);$/;"	t	file:
+initjobs	tsh.c	/^void initjobs(struct job_t *jobs) {$/;"	f
+jid	tsh.c	/^	int jid;                \/* job ID [1, 2, ...] *\/$/;"	m	struct:job_t	file:
+job_t	tsh.c	/^struct job_t {              \/* The job struct *\/$/;"	s	file:
+jobs	tsh.c	/^struct job_t jobs[MAXJOBS]; \/* The job list *\/$/;"	v	typeref:struct:job_t
+listjobs	tsh.c	/^void listjobs(struct job_t *jobs) $/;"	f
+main	tsh.c	/^int main(int argc, char **argv) $/;"	f
+maxjid	tsh.c	/^int maxjid(struct job_t *jobs) $/;"	f
+nextjid	tsh.c	/^int nextjid = 1;            \/* next job ID to allocate *\/$/;"	v
+parseline	tsh.c	/^int parseline(const char *cmdline, char **argv) $/;"	f
+pid	tsh.c	/^	pid_t pid;              \/* job PID *\/$/;"	m	struct:job_t	file:
+pid2jid	tsh.c	/^int pid2jid(pid_t pid) $/;"	f
+prompt	tsh.c	/^char prompt[] = "tsh> ";    \/* command line prompt (DO NOT CHANGE) *\/$/;"	v
+sbuf	tsh.c	/^char sbuf[MAXLINE];         \/* for composing sprintf messages *\/$/;"	v
+sigchld_handler	tsh.c	/^void sigchld_handler(int sig) $/;"	f
+sigint_handler	tsh.c	/^void sigint_handler(int sig) $/;"	f
+sigquit_handler	tsh.c	/^void sigquit_handler(int sig) $/;"	f
+sigtstp_handler	tsh.c	/^void sigtstp_handler(int sig) $/;"	f
+state	tsh.c	/^	int state;              \/* UNDEF, BG, FG, or ST *\/$/;"	m	struct:job_t	file:
+unix_error	tsh.c	/^void unix_error(char *msg)$/;"	f
+usage	tsh.c	/^void usage(void) $/;"	f
+verbose	tsh.c	/^int verbose = 0;            \/* if true, print additional output *\/$/;"	v
+waitfg	tsh.c	/^void waitfg(pid_t pid)$/;"	f
