@@ -310,19 +310,20 @@ int builtin_cmd(char **argv)
 {
 	if (!strcmp(argv[0], "quit")) /* quit command */
 		exit(0);  
+
 	if(!strcmp(argv[0], "fg") || !strcmp(argv[0], "bg")) {
 		do_bgfg(argv);
 		return 1;
 	}
+
 	if(!strcmp(argv[0], "jobs")) {
-#ifdef DEBUG
-		printf("jobs!\n");
-#endif
 		listjobs(jobs);
 		return 1;
 	}
+
 	if (!strcmp(argv[0], "&"))    /* Ignore singleton & */
 		return 1;
+
 	return 0;     /* not a builtin command */
 }
 
@@ -340,13 +341,13 @@ void do_bgfg(char **argv)
 	Sigemptyset(&mask);
 	Sigaddset(&mask, SIGCHLD); 
 
-	/* there is only one argument */
+	/* only one argument */
 	if(!argv[1]) {
 		printf("%s command requires PID or %%jobid argument\n", bg ? "bg" : "fg" );
 		return;
 	}
 	/* jid */
-	if(argv[1][0] == '%') {
+	else if(argv[1][0] == '%') {
 		sscanf(&argv[1][1], "%d", &jid);
 		struct job_t *job = getjobjid(jobs, jid);	
 		if(!job) {
@@ -373,7 +374,7 @@ void do_bgfg(char **argv)
 		return;
 	}
 	/* pid */
-	if(argv[1][0] >= '0' && argv[1][0] <= '9') {
+	else if(argv[1][0] >= '0' && argv[1][0] <= '9') {
 		sscanf(&argv[1][1], "%d", &pid);
 		struct job_t *job = getjobpid(jobs, pid);	
 		if(!job) {
@@ -399,7 +400,8 @@ void do_bgfg(char **argv)
 			waitfg(job->pid);
 		return;
 	}
-	printf("%s: argument must be a PID or %%jobid\n",(bg == 0) ? "bg" : "fg" );
+	else 
+		printf("%s: argument must be a PID or %%jobid\n",bg ? "bg" : "fg" );
 	return;
 }
 
@@ -452,11 +454,13 @@ void sigchld_handler(int sig)
 		}
 		/* the child process was terminated */
 		if(WIFEXITED(status) || WIFSIGNALED(status)) {
+
 			/* the child process terminated because of signal that was not caught */
 			if(WIFSIGNALED(status)) {
 				printf("Job [%d] (%d) terminated by signal %d\n",
 						job->jid, job->pid, WTERMSIG(status));
 			}
+
 			deletejob(jobs, pid); /* Delete the child from the job list */
 		}
 		else if(WIFSTOPPED(status)) {
@@ -733,79 +737,79 @@ void sigquit_handler(int sig)
 /* $begin forkwrapper */
 pid_t Fork(void) 
 {
-    pid_t pid;
+	pid_t pid;
 
-    if ((pid = fork()) < 0)
-	unix_error("Fork error");
-    return pid;
+	if ((pid = fork()) < 0)
+		unix_error("Fork error");
+	return pid;
 }
 /* $end forkwrapper */
 
 void Execve(const char *filename, char *const argv[], char *const envp[]) 
 {
-    if (execve(filename, argv, envp) < 0)
-	unix_error("Execve error");
+	if (execve(filename, argv, envp) < 0)
+		unix_error("Execve error");
 }
 
 /* $begin wait */
 pid_t Wait(int *status) 
 {
-    pid_t pid;
+	pid_t pid;
 
-    if ((pid  = wait(status)) < 0)
-	unix_error("Wait error");
-    return pid;
+	if ((pid  = wait(status)) < 0)
+		unix_error("Wait error");
+	return pid;
 }
 /* $end wait */
 
 pid_t Waitpid(pid_t pid, int *iptr, int options) 
 {
-    pid_t retpid;
+	pid_t retpid;
 
-    if ((retpid  = waitpid(pid, iptr, options)) < 0) 
-	unix_error("Waitpid error");
-    return(retpid);
+	if ((retpid  = waitpid(pid, iptr, options)) < 0) 
+		unix_error("Waitpid error");
+	return(retpid);
 }
 
 /* $begin kill */
 void Kill(pid_t pid, int signum) 
 {
-    int rc;
+	int rc;
 
-    if ((rc = kill(pid, signum)) < 0)
-	unix_error("Kill error");
+	if ((rc = kill(pid, signum)) < 0)
+		unix_error("Kill error");
 }
 /* $end kill */
 
 void Pause() 
 {
-    (void)pause();
-    return;
+	(void)pause();
+	return;
 }
 
 unsigned int Sleep(unsigned int secs) 
 {
-    unsigned int rc;
+	unsigned int rc;
 
-    if ((rc = sleep(secs)) < 0)
-	unix_error("Sleep error");
-    return rc;
+	if ((rc = sleep(secs)) < 0)
+		unix_error("Sleep error");
+	return rc;
 }
 
 unsigned int Alarm(unsigned int seconds) {
-    return alarm(seconds);
+	return alarm(seconds);
 }
- 
-void Setpgid(pid_t pid, pid_t pgid) {
-    int rc;
 
-    if ((rc = setpgid(pid, pgid)) < 0)
-	unix_error("Setpgid error");
-    return;
+void Setpgid(pid_t pid, pid_t pgid) {
+	int rc;
+
+	if ((rc = setpgid(pid, pgid)) < 0)
+		unix_error("Setpgid error");
+	return;
 }
 
 pid_t Getpgrp(void) {
-    return getpgrp();
+	return getpgrp();
 }
 
 /************************************
@@ -815,57 +819,57 @@ pid_t Getpgrp(void) {
 /* $begin sigaction */
 handler_t *Signal(int signum, handler_t *handler) 
 {
-    struct sigaction action, old_action;
+	struct sigaction action, old_action;
 
-    action.sa_handler = handler;  
-    sigemptyset(&action.sa_mask); /* block sigs of type being handled */
-    action.sa_flags = SA_RESTART; /* restart syscalls if possible */
+	action.sa_handler = handler;  
+	sigemptyset(&action.sa_mask); /* block sigs of type being handled */
+	action.sa_flags = SA_RESTART; /* restart syscalls if possible */
 
-    if (sigaction(signum, &action, &old_action) < 0)
-	unix_error("Signal error");
-    return (old_action.sa_handler);
+	if (sigaction(signum, &action, &old_action) < 0)
+		unix_error("Signal error");
+	return (old_action.sa_handler);
 }
 /* $end sigaction */
 
 void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
 {
-    if (sigprocmask(how, set, oldset) < 0)
-	unix_error("Sigprocmask error");
-    return;
+	if (sigprocmask(how, set, oldset) < 0)
+		unix_error("Sigprocmask error");
+	return;
 }
 
 void Sigemptyset(sigset_t *set)
 {
-    if (sigemptyset(set) < 0)
-	unix_error("Sigemptyset error");
-    return;
+	if (sigemptyset(set) < 0)
+		unix_error("Sigemptyset error");
+	return;
 }
 
 void Sigfillset(sigset_t *set)
 { 
-    if (sigfillset(set) < 0)
-	unix_error("Sigfillset error");
-    return;
+	if (sigfillset(set) < 0)
+		unix_error("Sigfillset error");
+	return;
 }
 
 void Sigaddset(sigset_t *set, int signum)
 {
-    if (sigaddset(set, signum) < 0)
-	unix_error("Sigaddset error");
-    return;
+	if (sigaddset(set, signum) < 0)
+		unix_error("Sigaddset error");
+	return;
 }
 
 void Sigdelset(sigset_t *set, int signum)
 {
-    if (sigdelset(set, signum) < 0)
-	unix_error("Sigdelset error");
-    return;
+	if (sigdelset(set, signum) < 0)
+		unix_error("Sigdelset error");
+	return;
 }
 
 int Sigismember(const sigset_t *set, int signum)
 {
-    int rc;
-    if ((rc = sigismember(set, signum)) < 0)
-	unix_error("Sigismember error");
-    return rc;
+	int rc;
+	if ((rc = sigismember(set, signum)) < 0)
+		unix_error("Sigismember error");
+	return rc;
 }
